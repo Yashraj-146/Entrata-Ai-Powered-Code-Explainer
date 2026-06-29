@@ -91,6 +91,29 @@ Start the local server:
 ollama serve
 ```
 
+## Why We Chose These AI Tools
+
+### Ollama: Local LLM Hosting
+
+Ollama was selected as the AI inference platform because it allows the application to run large language models locally instead of relying on cloud APIs.
+
+Reasons:
+- Privacy first: source code never leaves the user's machine, which matters when analyzing proprietary code snippets.
+- No API costs: unlike hosted APIs, Ollama has no per-request pricing, making it practical for local development, student projects, and internal developer tools.
+- Low latency: local inference avoids network round trips once the model is loaded.
+- Offline capability: the application can continue to function without an internet connection.
+- Model flexibility: models can be swapped by changing `OLLAMA_MODEL` without modifying application logic.
+
+### Qwen2.5-Coder 7B
+
+The default model is `qwen2.5-coder:7b` because it is optimized for software engineering tasks while still being small enough to run on consumer hardware.
+
+Reasons:
+- Strong understanding of Python, JavaScript, and TypeScript.
+- Produces useful code explanations, refactoring suggestions, and optimization recommendations.
+- The 7B parameter size balances local performance with coding quality.
+- Open-source availability makes it suitable for local deployment without API or licensing lock-in.
+
 ## Run The App
 
 ```bash
@@ -106,9 +129,15 @@ npm run typecheck
 npm run build
 ```
 
-## Design Decisions
+## Design Rationale
 
-The LLM is called only from the server route so environment variables and provider details stay out of the browser. The UI keeps history in React state as required, while the server keeps the response cache in memory behind a cache interface so it can later be replaced with Redis, SQLite, or Postgres.
+The architecture is driven by a simple principle: each component should solve a real problem without introducing unnecessary complexity. The project uses a single Next.js App Router application instead of splitting the frontend and backend into separate services. This keeps development, deployment, and maintenance straightforward while preserving a clear separation of concerns: the React UI owns the user experience, while the server-side API owns validation, language detection, AST analysis, prompt construction, caching, and LLM communication.
+
+For AI inference, the application uses Ollama with `qwen2.5-coder:7b` to keep code analysis local. This avoids per-request API costs, protects source code privacy, and removes dependence on external AI services during normal use. Qwen2.5-Coder was selected because it performs well on Python, JavaScript, and TypeScript tasks while remaining practical to run on consumer hardware.
+
+The application does not rely on the language model alone. Before prompting, it performs language-specific AST parsing and extracts deterministic facts such as functions, classes, imports, loops, conditionals, and return usage. These facts are included alongside the original source code, grounding the model in the actual program structure and improving the consistency of explanations and optimized code.
+
+The system is designed to evolve without large architectural changes. Model calls are isolated behind the `LLMProvider` interface, and caching is isolated behind its own interface. That makes it straightforward to adopt another model provider later or replace the in-memory cache with Redis, SQLite, or PostgreSQL as requirements grow.
 
 ## AST Pipeline
 
@@ -122,7 +151,11 @@ Responses are cached in a `Map<string, CachedResult>`. Cache keys are generated 
 SHA256(normalizedCode + language + modelName + promptVersion)
 ```
 
-Including `OLLAMA_MODEL` and the prompt version prevents stale responses when the model or prompt changes.
+Reasons:
+- Avoids repeated LLM inference for identical requests.
+- Reduces response time.
+- Improves scalability.
+- Ensures cache invalidation when either the model or prompt changes.
 
 ## Hallucination Mitigation
 
